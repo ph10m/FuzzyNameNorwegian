@@ -27,5 +27,6 @@ for namefile in name_files:
         # store the two dictionaries as pickle files
         proper_name = namefile[:len(namefile)-4] + '.cache'
         print(proper_name)
-        pickle.dump(by_name_length, open(proper_name, 'wb'))
+        pickle.dump(by_name_length, open('by_length_'+proper_name, 'wb'))
+        pickle.dump(by_name_letter, open('by_letter_'+proper_name, 'wb'))
 
