@@ -18,8 +18,8 @@ import java.util.*;
 class FuzzyNameSearch {
     private CacheFiles cf = new CacheFiles();
     // Replace each respective trigger with its replacement
-    private char[] triggerChars = new char[]{'e', 'o', 'a', 'l', 'n'};
-    private char[] replaceChars = new char[]{'æ', 'ø', 'å', 'i', 'r'};
+    private char[] triggerChars = new char[]{'e', 'o', 'a', 'l', 'n', 'i', '!'};
+    private char[] replaceChars = new char[]{'æ', 'ø', 'å', 'i', 'r', 'l', 'l'};
     private HashMap<Character, Character> replacementMap = new HashMap<Character, Character>(){{
         for (int i = 0; i < triggerChars.length; i++) {
             put(triggerChars[i], replaceChars[i]);
@@ -82,7 +82,6 @@ class FuzzyNameSearch {
         }
         return possibleNames;
     }
-    Slugify slg = new Slugify();
     private String bestMatch(String name, Collection<String> nameList){
         Set<String> matches = new HashSet<>();
         List<String> permutationsOfName = this.generatePermutations(name);
@@ -125,11 +124,11 @@ class FuzzyNameSearch {
             // add penalty
             int tmpScore = FuzzySearch.ratio(orig, s);
             // Add a penalty score of -10 for each letter the names differ in length
-            tmpScore -= 10*(Math.abs(orig.length() - s.length()));
+            tmpScore -= 20*(Math.abs(orig.length() - s.length()));
 //            System.out.println("Comparing " + orig + " to "+ s + ", Score = " + tmpScore);
             // if tmpScore is 100, this name is definitely correct
             if (tmpScore == 100){
-                System.out.println("Perfect score!");
+//                System.out.println("Perfect score!");
                 bestWord = s;
                 break;
             }
@@ -168,17 +167,12 @@ class FuzzyNameSearch {
                 this.cf.getFnLength(name.length()):
                 this.cf.getSnLength(name.length());
         matches.add(this.bestMatch(name, byLength));
-
-
-        System.out.println("Finished fetching name scores");
-        matches.forEach(System.out::println);
-//        return this.compareScore(name, matches);
         /*
         Given that we have "Øygard" and "Nygård" as matches for Nygard
         We want to compare the slugs of both these words, and discard the worst
          */
-        System.out.println("Matches...");
         matches.forEach(System.out::println);
+        Slugify slg = new Slugify();
         String bestSlug = "";
         int bestSlugScore = -1;
         for (String m : matches){
@@ -196,6 +190,14 @@ class FuzzyNameSearch {
 //        return this.compareScore(name, sluggedMatches);
     }
 
+
+    void simpleHandleName(String name){
+        name = name.trim().toLowerCase();
+        String best = this.getNameScore(name, false);
+        System.out.println(best);
+        this.tempCachedWords.put(name, best);
+    }
+
     void handleName(String name){
         name = name.trim().toLowerCase();
         String first;
@@ -207,27 +209,40 @@ class FuzzyNameSearch {
                 sur = nameArr[1];
             }
             else first = name;
-        System.out.println("First name: "+first);
-        System.out.println("Middle/surname(s): "+sur);
+//        System.out.println("First name: "+first);
+//        System.out.println("Middle/surname(s): "+sur);
 
         List<String> allNames = new ArrayList<>();
-        String best = this.getNameScore(first, true);
-        System.out.println("Best word: " + best);
-        this.tempCachedWords.put(first, best);
-        allNames.add(best);
+
+        if (first.contains("-")){
+            System.out.println("Split name!");
+            List<String> combinedFirstName = new ArrayList<>();
+            for (String part : StringUtils.split(first, '-')){
+                System.out.println(part);
+                String best = this.getNameScore(part, true);
+                combinedFirstName.add(best);
+                this.tempCachedWords.put(part, best);
+            }
+            allNames.add(StringUtils.join(combinedFirstName,'-'));
+        }
+        else{
+            String best = this.getNameScore(first, true);
+            System.out.println("Best word: " + best);
+            this.tempCachedWords.put(first, best);
+            allNames.add(best);
+        }
+
 
         if (sur.length() > 0) {
             for (String s : sur.split("\\s+")) {
                 System.out.println("Handling " + s);
-                best = this.getNameScore(s, false);
+                String best = this.getNameScore(s, false);
                 this.tempCachedWords.put(s, best);
                 allNames.add(best);
-
-                System.out.println("Best word: " + best);
+//                System.out.println("Best word: " + best);
             }
         }
-        System.out.println("Parsed name:");
-        System.out.println(String.join(" ", allNames));
+        System.out.println("Parsed name: " + String.join(" ", allNames));
     }
 
     void close(){

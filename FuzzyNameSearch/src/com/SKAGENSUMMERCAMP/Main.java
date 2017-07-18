@@ -1,17 +1,23 @@
 package com.SKAGENSUMMERCAMP;
-import com.github.slugify.Slugify;
-import me.xdrop.fuzzywuzzy.FuzzySearch;
-
-import java.util.HashMap;
+import java.util.Scanner;
 
 public class Main {
 
     public static void main(String[] args) {
         FuzzyNameSearch fs = new FuzzyNameSearch();
-        // Supposed to be Ola Espen Halvor Pedersen Olsen Heidi Lund
-        fs.handleName("Haiivard Nygard");
-        fs.handleName("Kåle");
-//        fs.close();
+        fs.handleName("Trr-Pøttqr Strndew");
+//        Scanner in = new Scanner(System.in);
+//        while (in.hasNext()){
+//            String name = in.nextLine();
+//            System.out.println("found name: " + name);
+//            if (name.contains(" ")){
+//                fs.handleName(name);
+//            }
+//            else{
+//                fs.simpleHandleName(name);
+//            }
+//        }
+        // comment fs.close() to avoid caching (for debugging)
+        // fs.close();
     }
 }
-
