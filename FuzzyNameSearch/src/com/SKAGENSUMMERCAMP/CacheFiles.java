@@ -12,7 +12,11 @@ import java.util.*;
 
 class CacheFiles {
     CacheFiles(){
-        List<String> cachedFiles = Arrays.asList("raw_firstnames.cache", "raw_surnames.cache", "by_length_firstnames.cache",
+        // Check if "name_matches.cache" is stored at first:
+        if (!new File("src/data/name_matches.cache").exists()){
+            cacheObject("name_matches", new HashMap<String, String>());
+        }
+        List<String> cachedFiles = Arrays.asList("by_length_firstnames.cache",
                 "by_letter_firstnames.cache", "by_length_surnames.cache", "by_letter_surnames.cache");
         for (String c : cachedFiles){
             if (!new File("src/data/"+c).exists()){
@@ -20,12 +24,13 @@ class CacheFiles {
                 rebuildCache();
             }
         }
-        System.out.println("Ready to return cached files");
+        // System.out.println("Ready to return cached files");
     }
 
-    private Object getCachedObject(String fileName) {
+    Object getCachedObject(String fileName) {
         Object cachedFile = null;
         fileName = "src/data/"+fileName+".cache";
+        // System.out.println("Returning cached file: "+fileName);
         try {
             FileInputStream fs = new FileInputStream(fileName);
             ObjectInputStream os = new ObjectInputStream(fs);
@@ -53,46 +58,47 @@ class CacheFiles {
         return tmp.get(identifier);
     }
 
+    Collection<String> getSnLetter(Character identifier){
+        HashMap<Character, Collection<String>> tmp =
+                (HashMap) this.getCachedObject("by_letter_surnames");
+        return tmp.get(identifier);
+    }
+
     Collection<String> getSnLength(int identifier){
         HashMap<Integer, Collection<String>> tmp =
                 (HashMap) this.getCachedObject("by_length_surnames");
         return tmp.get(identifier);
     }
-
-    Collection<String> getSnLetter(Character identifier){
-        HashMap<Character, Collection<String>> tmp =
-                (HashMap) this.getCachedObject("by_length_surnames");
-        return tmp.get(identifier);
-    }
-    HashMap getFnLetter(){
-        return (HashMap) this.getCachedObject("by_letter_firstnames");
-    }
-    HashMap getFnLength(){
-        return (HashMap) this.getCachedObject("by_length_firstnames");
-    }
-    HashMap getSnLetter(){
-        return (HashMap) this.getCachedObject("by_letter_surnames");
-    }
-    HashMap getSnLength(){
-        return (HashMap) this.getCachedObject("by_length_surnames");
-    }
-    HashSet<String> getFirstName(){
-        return (HashSet<String>) this.getCachedObject("raw_firstnames");
-    }
-    HashSet<String> getSurName(){
-        return (HashSet<String>) this.getCachedObject("raw_surnames");
-    }
+//    HashMap getFnLetter(){
+//        return (HashMap) this.getCachedObject("by_letter_firstnames");
+//    }
+//    HashMap getFnLength(){
+//        return (HashMap) this.getCachedObject("by_length_firstnames");
+//    }
+//    HashMap getSnLetter(){
+//        return (HashMap) this.getCachedObject("by_letter_surnames");
+//    }
+//    HashMap getSnLength(){
+//        return (HashMap) this.getCachedObject("by_length_surnames");
+//    }
+//    HashSet<String> getFirstName(){
+//        return (HashSet<String>) this.getCachedObject("raw_firstnames");
+//    }
+//    HashSet<String> getSurName(){
+//        return (HashSet<String>) this.getCachedObject("raw_surnames");
+//    }
 
 
-    private void cacheObject(String fileName, Object obj){
+    protected void cacheObject(String fileName, Object obj){
         fileName = "src/data/"+fileName+".cache";
+        System.out.println("Caching file: "+fileName);
         try {
             FileOutputStream fs = new FileOutputStream(fileName);
             ObjectOutputStream os = new ObjectOutputStream(fs);
             os.writeObject(obj);
             os.close();
             fs.close();
-            System.out.println(fileName + " stored in /data");
+            System.out.println(fileName + " cached successfully");
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -115,7 +121,7 @@ class CacheFiles {
                     BufferedReader br = new BufferedReader(new FileReader(filePath));
                     String line;
                     while ((line = br.readLine()) != null){
-                        System.out.println(line);
+//                        System.out.println(line);
                         allNames.add(line.toLowerCase());
                     }
                 } catch (IOException e) {

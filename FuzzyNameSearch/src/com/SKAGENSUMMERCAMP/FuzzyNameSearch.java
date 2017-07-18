@@ -1,6 +1,9 @@
 package com.SKAGENSUMMERCAMP;
 
+import com.github.slugify.Slugify;
+import com.sun.org.apache.xpath.internal.SourceTree;
 import me.xdrop.fuzzywuzzy.*;
+import me.xdrop.fuzzywuzzy.model.ExtractedResult;
 import org.apache.commons.lang3.StringUtils;
 
 import java.util.*;
@@ -11,179 +14,224 @@ import java.util.*;
  * https://stackoverflow.com/a/32233940 (generate binary numbers)
  * https://stackoverflow.com/a/1816989 (occurrences of character in string)
  */
-public class FuzzyNameSearch {
-    private CacheFiles cf;
-    private HashSet<String> fn;
-    private HashSet<String> sn;
-    FuzzyNameSearch() {
-        this.cf = new CacheFiles();
-        this.fn = cf.getFirstName();
-        this.sn = cf.getSurName();
-    }
 
+class FuzzyNameSearch {
+    private CacheFiles cf = new CacheFiles();
+    // Replace each respective trigger with its replacement
+    private char[] triggerChars = new char[]{'e', 'o', 'a', 'l', 'n'};
+    private char[] replaceChars = new char[]{'æ', 'ø', 'å', 'i', 'r'};
+    private HashMap<Character, Character> replacementMap = new HashMap<Character, Character>(){{
+        for (int i = 0; i < triggerChars.length; i++) {
+            put(triggerChars[i], replaceChars[i]);
+        }
+    }};
+    @SuppressWarnings("unchecked")
+    private HashMap <String, String> tempCachedWords = new HashMap<>();
+    private HashMap <String, String> cachedWords =
+            (HashMap) this.cf.getCachedObject("name_matches");
+    FuzzyNameSearch(){}
+
+    // Returns a list of all binary numbers up to a certain bit
     private List<String> generateBinaries(int bits){
-        System.out.println("Generating binary list for "+bits+" bits");
-        int maxNum = 1 << bits; // max num is 2^16 = 65536
+        // System.out.println("Generating binary list for "+bits+" bits");
+        int maxNum = 1 << bits; // e.g. 4 bits -> 2^4 = 16 permutations
         List<String> bins = new ArrayList<>();
         for (int i = 0; i < maxNum; i++) {
-            String bin = Integer.toBinaryString(i);
-            while (bin.length() != bits) bin = "0" + bin;
-            bins.add(bin);
+            StringBuilder bin = new StringBuilder(Integer.toBinaryString(i));
+            while (bin.length() != bits) bin.insert(0, "0");
+            bins.add(bin.toString());
         }
         return bins;
     }
 
-    private List<String> generatePermutations(String s){
-        HashMap<Character, Character> replacementMap = new HashMap<Character, Character>(){{
-            put('æ','e'); put('ø','o'); put('å','a'); put('l','i');
-        }};
-        // Add all unique characters to a new string
-        String oddChars = "";
-        for (Character c : new char[]{'æ', 'ø', 'å', 'l'}){
-            if (StringUtils.contains(s, c) && !StringUtils.contains(oddChars, c)){
-                oddChars += c;
+    private String extractUniqueChars(String s){
+        String chars = "";
+        for (Character c : this.triggerChars){
+            // Check if the parameter string has this char, if so, make sure it's unique
+            if (StringUtils.contains(s, c) && !StringUtils.contains(chars, c)){
+                chars += c;
             }
         }
-        System.out.println("Got these chars: " + oddChars);
+        return chars;
+    }
 
-        // Get the amount of permutations of the odd characters
+    // Returns a list of possible names by replacing certain characters
+    private List<String> generatePermutations(String s){
+        // Check if the passed name actually has any of the triggers
+        // if not, simply return the name (keep Collection type)
+        if (!StringUtils.containsAny(s, triggerChars)){
+            return Collections.singletonList(s);
+        }
+        // Add all unique characters to a new string
+        String chars = extractUniqueChars(s);
         List<String> possibleNames = new ArrayList<>();
-        List<String> binaryList = this.generateBinaries(oddChars.length());
+        // Get the amount of permutations of the odd characters
+        List<String> binaryList = this.generateBinaries(chars.length());
         for (String bin : binaryList){
-            System.out.println("Creating on/off table for " + bin);
-            // Create a copy of oddChars for each permutation
-            String tmpOddChars = s;
+            // creating an inner copy of the passed name
+            String k = s.intern();
             for (int i = 0; i < bin.length(); i++){
                 Character bit = bin.charAt(i);
                 if (bit=='1'){
-                    Character newChar = replacementMap.get(oddChars.charAt(i));
-                    tmpOddChars = StringUtils.replaceChars(tmpOddChars, oddChars.charAt(i), newChar);
+                    Character newChar = replacementMap.get(chars.charAt(i));
+                    k = StringUtils.replaceChars(k, chars.charAt(i), newChar);
                 }
             }
-            System.out.println("Done with this permutation, result: "+tmpOddChars);
-            possibleNames.add(tmpOddChars);
+            // Done with this permutation
+            possibleNames.add(k);
         }
         return possibleNames;
     }
-
-
+    Slugify slg = new Slugify();
     private String bestMatch(String name, Collection<String> nameList){
-        List<String> possibleMatches = this.generatePermutations(name);
-        for (String match : possibleMatches) {
-            // do all three possible matches
-            System.out.println("Working with " + match);
-            System.out.println(FuzzySearch.extractOne(match, nameList));
+        Set<String> matches = new HashSet<>();
+        List<String> permutationsOfName = this.generatePermutations(name);
+        System.out.println("Best match for " + name + " in " + StringUtils.join(permutationsOfName));
+
+        for (String n : permutationsOfName) {
+            // System.out.println(n);
+            // Compute the top three for each possible match, giving a broader sample size.
+            Set<String> topThree = new HashSet<>();
+            for (ExtractedResult er : FuzzySearch.extractTop(n, nameList, 3)){
+                topThree.add(er.getString());
+            }
+            String bestOfThree = this.compareScore(n, topThree);
+            // A fuzzy score of 100 indicates an identical name - return this.
+            if (FuzzySearch.ratio(name, bestOfThree) == 100) return bestOfThree;
+            // Otherwise, continue adding the best matching names
+            matches.add(bestOfThree);
         }
-        // do a hardcoded example of fuzzy replacement
-        // as ø and o are similar, attempt to replace it and compare the score
-//        if (name.contains("ø")){
-//            System.out.println("Contains Ø, checking with it replaced:");
-//            System.out.println(FuzzySearch.extractOne(name.replace('ø','o'), nameList));
-//        }
-//        if (name.contains("å")){
-//            System.out.println("Contains Å, checking with it replaced:");
-//            System.out.println(FuzzySearch.extractOne(name.replace('å','a'), nameList));
-//        }
-//        if (name.contains("æ")){
-//            System.out.println("Contains Æ, checking with it replaced:");
-//            System.out.println(FuzzySearch.extractOne(name.replace('æ','e'), nameList));
-//        }
-
-
-        return "";
-//        int _score = -1;
-//        String _best = "";
-//        for (String n : nl){
-//            int fuzzScore = FuzzySearch.ratio(name, n);
-//            if (fuzzScore > _score){
-//                _score = fuzzScore;
-//                _best = n;
-//            }
-//        }
-//        return _best;
+        // Do some clever calculations to find the actual best match
+        return this.compareScore(name, matches);
     }
 
-    private String compareScore(String orig, String ... fuzzyWords){
+    private String getCachedKey(String key){
+        if (this.cachedWords.containsKey(key))
+            return this.cachedWords.get(key);
+        else if (this.tempCachedWords.containsKey(key)){
+            return this.tempCachedWords.get(key);
+        }
+        return null;
+    }
+
+    // The essence of the program - computes the score for each word
+    // Returns the best matching word
+    private String compareScore(String orig, Set<String> fuzzyWords){
+        // Look up cached words
         int bestScore = -1;
         String bestWord = "";
-        for (String f : fuzzyWords){
-            int tmpScore = FuzzySearch.ratio(orig, f);
+        for (String s : fuzzyWords){
+            if (s.length() < 1) continue;
             // add penalty
-            tmpScore -= 10*(Math.abs(orig.length() - f.length()));
+            int tmpScore = FuzzySearch.ratio(orig, s);
+            // Add a penalty score of -10 for each letter the names differ in length
+            tmpScore -= 10*(Math.abs(orig.length() - s.length()));
+//            System.out.println("Comparing " + orig + " to "+ s + ", Score = " + tmpScore);
+            // if tmpScore is 100, this name is definitely correct
+            if (tmpScore == 100){
+                System.out.println("Perfect score!");
+                bestWord = s;
+                break;
+            }
             if (tmpScore > bestScore){
                 bestScore = tmpScore;
-                bestWord = f;
+                bestWord = s;
             }
         }
+//        System.out.println(bestWord+" with " + bestScore + " was returned");
         return bestWord;
     }
-//
-//    private String compareScore(String original, String fuzz1, String fuzz2){
-//        int score1 = FuzzySearch.ratio(original, fuzz1);
-//        int score2 = FuzzySearch.ratio(original, fuzz2);
-//        // we don't want to strictly compare the two:
-//        // - favoring the word of similar length to the original should get prioritized
-//        // subtract 10 times the difference in word length
-//        int score1penalty = 10*(Math.abs(original.length() - fuzz1.length()));
-//        int score2penalty = 10*(Math.abs(original.length() - fuzz2.length()));
-//        score1 -= score1penalty;
-//        score2 -= score2penalty;
-//        String bestMatch = score1>score2?fuzz1:fuzz2;
-//        System.out.println("Found " + fuzz1 + "(" + score1 + ") and " + fuzz2 + "(" + score2 + ")");
-////        System.out.println("Partial matches: ");
-////        System.out.println(FuzzySearch.);
-//
-//        System.out.println("Best match: "+bestMatch);
-////        return score1>score2?fuzz1:fuzz2;
-//        return bestMatch;
-//    }
 
-    public void handleName(String name){
+    private String getNameScore(String name, boolean isFirst){
+        String cachedKey = getCachedKey(name);
+        if (cachedKey != null){
+            System.out.println("Found cached key for "+name+": "+cachedKey);
+            return cachedKey;
+        }
+
+        Set<String> matches = new HashSet<>();
+        // attempt to find a name matching on the "by_length" list.
+        // there is a chance of no lists occurring, thus the try/catch
+        try{
+            Collection<String> byLetter = isFirst?
+                    this.cf.getFnLetter(name.charAt(0)):
+                    this.cf.getSnLetter(name.charAt(0));
+            if (byLetter.size() > 0){
+                matches.add(bestMatch(name, byLetter));
+            }
+        }
+        catch(NullPointerException e){
+            System.out.println("Did not find any list for character " + name.charAt(0));
+        }
+        // find matches on the "by_length" list
+        Collection<String> byLength = isFirst?
+                this.cf.getFnLength(name.length()):
+                this.cf.getSnLength(name.length());
+        matches.add(this.bestMatch(name, byLength));
+
+
+        System.out.println("Finished fetching name scores");
+        matches.forEach(System.out::println);
+//        return this.compareScore(name, matches);
+        /*
+        Given that we have "Øygard" and "Nygård" as matches for Nygard
+        We want to compare the slugs of both these words, and discard the worst
+         */
+        System.out.println("Matches...");
+        matches.forEach(System.out::println);
+        String bestSlug = "";
+        int bestSlugScore = -1;
+        for (String m : matches){
+            String slugTxt = slg.slugify(m);
+            int tmp = FuzzySearch.ratio(name, slugTxt);
+            tmp -= 10*(Math.abs(name.length() - slugTxt.length()));
+            System.out.println("Comparing " + name + " with the slug of "+m+": " + slugTxt + " scored " + tmp);
+            if (tmp>bestSlugScore){
+                bestSlugScore = tmp;
+                bestSlug = m;
+            }
+        }
+        return bestSlug;
+//        System.out.println("BEST FINAL MATCH: " + bestSlug);
+//        return this.compareScore(name, sluggedMatches);
+    }
+
+    void handleName(String name){
         name = name.trim().toLowerCase();
-        String first = "";
+        String first;
         String sur = "";
         // Keep the first name as the first element, then the rest of the names as the second.
-        String[] splitted = name.split("\\s+", 2);
-            if (splitted.length > 1) {
-                System.out.println("Found some more names");
-                first = splitted[0];
-                sur = splitted[1];
+        String[] nameArr = name.split("\\s+", 2);
+            if (nameArr.length > 1) {
+                first = nameArr[0];
+                sur = nameArr[1];
             }
             else first = name;
-        List<String> allNames = new ArrayList<>();
         System.out.println("First name: "+first);
         System.out.println("Middle/surname(s): "+sur);
 
-        String firstNameLetterMatch = this.bestMatch(first, this.cf.getFnLetter(first.charAt(0)));
-        String firstNameLengthMatch = this.bestMatch(first, this.cf.getFnLength(first.length()));
-        String firstNameAbsoluteMatch = this.bestMatch(first, this.fn);
-
-        String fnBestMatch = this.compareScore(
-                first,
-                firstNameLengthMatch,
-                firstNameLetterMatch,
-                firstNameAbsoluteMatch);
-
-        // Compare the entire firstnames file against the name
-        allNames.add(fnBestMatch);
+        List<String> allNames = new ArrayList<>();
+        String best = this.getNameScore(first, true);
+        System.out.println("Best word: " + best);
+        this.tempCachedWords.put(first, best);
+        allNames.add(best);
 
         if (sur.length() > 0) {
             for (String s : sur.split("\\s+")) {
                 System.out.println("Handling " + s);
-                String surNameLetterMatch = this.bestMatch(s, this.cf.getSnLetter(s.charAt(0)));
-                String surNameLengthMatch = this.bestMatch(s, this.cf.getSnLength(s.length()));
-                String surNameAbsoluteMatch = this.bestMatch(s, this.sn);
+                best = this.getNameScore(s, false);
+                this.tempCachedWords.put(s, best);
+                allNames.add(best);
 
-                String surNameBestMatch = this.compareScore(
-                        s,
-                        surNameLengthMatch,
-                        surNameLetterMatch,
-                        surNameAbsoluteMatch
-                );
-                allNames.add(surNameBestMatch);
+                System.out.println("Best word: " + best);
             }
         }
         System.out.println("Parsed name:");
         System.out.println(String.join(" ", allNames));
+    }
+
+    void close(){
+        // write all newly found words to cache
+        this.cf.cacheObject("name_matches", this.tempCachedWords);
     }
 }
