@@ -127,7 +127,7 @@ class CacheFiles {
                 } catch (IOException e) {
                     e.printStackTrace();
                 }
-                cacheObject("raw_" + nameFile, allNames);
+                // cacheObject("raw_" + nameFile, allNames);
                 // if the map has no field for the list to be added, create it. Otherwise, add to the list.
                 for (String n : allNames){
                     byNameLetter.computeIfAbsent(n.charAt(0), x -> new ArrayList<>()).add(n);
