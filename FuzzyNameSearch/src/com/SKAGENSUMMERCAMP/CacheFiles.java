@@ -14,7 +14,7 @@ class CacheFiles {
     CacheFiles(){
         // Check if "name_matches.cache" is stored at first:
         if (!new File("src/data/name_matches.cache").exists()){
-            cacheObject("name_matches", new HashMap<String, String>());
+            cacheObject("name_matches", new HashMap<String, List<String>>());
         }
         List<String> cachedFiles = Arrays.asList("by_length_firstnames.cache",
                 "by_letter_firstnames.cache", "by_length_surnames.cache", "by_letter_surnames.cache");
@@ -89,19 +89,27 @@ class CacheFiles {
 //    }
 
 
-    protected void cacheObject(String fileName, Object obj){
+    void cacheObject(String fileName, Object obj){
         fileName = "src/data/"+fileName+".cache";
-        System.out.println("Caching file: "+fileName);
+//        System.out.println("Caching file: "+fileName);
         try {
             FileOutputStream fs = new FileOutputStream(fileName);
             ObjectOutputStream os = new ObjectOutputStream(fs);
             os.writeObject(obj);
             os.close();
             fs.close();
-            System.out.println(fileName + " cached successfully");
+//            System.out.println(fileName + " cached successfully");
         } catch (IOException e) {
             e.printStackTrace();
         }
+    }
+
+    void cacheNames(HashMap<String, String> hm){
+        String fileName = "name_matches";
+//        System.out.println("Rewriting name match cache");
+        HashMap <String, String> tmp = (HashMap) getCachedObject(fileName);
+        tmp.putAll(hm);
+        this.cacheObject(fileName, tmp);
     }
 
     private void rebuildCache(){
