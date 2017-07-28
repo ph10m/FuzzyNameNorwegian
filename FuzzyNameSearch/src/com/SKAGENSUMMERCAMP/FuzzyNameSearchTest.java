@@ -49,8 +49,7 @@ public class FuzzyNameSearchTest {
     public void fuzzy_CombinedFirstLastName(){
         compare("kristian flatheim","KRLSTHANFLATIEHM");
         compare("eirik ulversøy","eLrikulversou");
-        compare("hallvard nygård", "HALLVARD MYGÅRB");
-        compare("tollef jørgensen", "TocceF Jørgensem");
+        compare("hallvard nygård", "HALLVARDMYGÅRB");
     }
 
     @Test
