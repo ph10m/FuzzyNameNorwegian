@@ -1,20 +1,15 @@
 package com.SKAGENSUMMERCAMP;
 
-
 import org.apache.commons.lang3.StringUtils;
 import org.junit.Assert;
 import org.junit.Test;
-
-import java.io.File;
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
 
 /**
- * Created by toljoe on 19.07.2017.
+ * Created by tollef jørgensen on 19.07.2017.
  */
+
 public class FuzzyNameSearchTest {
     private FuzzyNameSearch fs = new FuzzyNameSearch();
     // delete cache file to ensure everything is checked from scratch
@@ -54,6 +49,8 @@ public class FuzzyNameSearchTest {
     public void fuzzy_CombinedFirstLastName(){
         compare("kristian flatheim","KRLSTHANFLATIEHM");
         compare("eirik ulversøy","eLrikulversou");
+        compare("hallvard nygård", "HALLVARD MYGÅRB");
+        compare("tollef jørgensen", "TocceF Jørgensem");
     }
 
     @Test
@@ -70,7 +67,7 @@ public class FuzzyNameSearchTest {
     }
 
     private void compare(String expected, String input){
-        Assert.assertEquals(toList(expected), fs.checkName(input));
+        Assert.assertEquals(toList(expected), fs.searchName(input));
     }
 
     private List<String> toList(String s){

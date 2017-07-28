@@ -13,11 +13,25 @@ import java.util.stream.Collectors;
  * https://stackoverflow.com/a/32233940 (generate binary numbers)
  * https://stackoverflow.com/a/1816989 (occurrences of character in string)
  * https://stackoverflow.com/a/38323180 (distinct list)
+ *
+ *
+ * This class heavily uses the Apache Stringutils library
+ *  to effectively compute string-based operations
+ *
+ * @variable triggerChars: ap of characters
+ * @variable replaceChars: map of characters to replace @triggerChars with
+ * @variable replacementMap: the computed map from above mentioned lists
+ * @variable tempCachedWords: an empty Map to store newly found words in
+ * @variable cachedWords: the Map to load from cache.
+ *                        Dump tempCachedWords into this upon exit.
+ * @variable foundLetterMatch: used to verify valid lists
+ *                             E.g. the list of names starting with 'Æ' is empty.
+ * @variable foundLengthMatch: used to verify names by length
+ *                             E.g. the list of names with length 30 is empty
  */
 
 class FuzzyNameSearch {
     private CacheFiles cf = new CacheFiles();
-    // Replace each respective trigger with its replacement
     private char[] triggerChars = new char[]{
             'e', 'o', 'a', 'l', 'n', 'i', '!', 'h', '1', '3', '5', 'q', 'c', 'g'};
     private char[] replaceChars = new char[]{
@@ -37,9 +51,12 @@ class FuzzyNameSearch {
     FuzzyNameSearch(){
     }
 
-    // Returns a list of all binary numbers up to a certain bit
+    /**
+     * Returns a list of all binary numbers up to a certain bit
+     * @param: number of bits
+     * @return: List with permutations of all binary numbers according to the given bit.
+     */
     private List<String> generateBinaries(int bits){
-        // System.out.println("Generating binary list for "+bits+" bits");
         int maxNum = 1 << bits; // e.g. 4 bits -> 2^4 = 16 permutations
         List<String> bins = new ArrayList<>();
         for (int i = 0; i < maxNum; i++) {
@@ -50,6 +67,11 @@ class FuzzyNameSearch {
         return bins;
     }
 
+    /**
+     * Returns all triggerChars in a string
+     * @param s String to find all characters in
+     * @return  String
+     */
     private String extractUniqueChars(String s){
         String chars = "";
         for (Character c : this.triggerChars){
@@ -61,7 +83,9 @@ class FuzzyNameSearch {
         return chars;
     }
 
-    // Returns a list of possible names by replacing certain characters
+    /**
+     * Explained below - heavily stiched into "bestMatch"
+     */
     private List<String> generatePermutations(String s){
         // Check if the passed name actually has any of the triggers
         // if not, simply return the name (keep Collection type)
@@ -88,14 +112,38 @@ class FuzzyNameSearch {
         }
         return possibleNames;
     }
-    private String bestMatch(String name, Collection<String> nameList){
 
+    /**
+     * Finds "best match" of a name; computing its Levenshtein score
+     * compute the binary permutations of triggerChars within the name
+     * use these to generate all permutations of the name, with replaced characters
+     *
+     * Example:
+     *              name = Ådne
+     *
+     *              find trigger-chars
+     *              -> n and e as a string -> "ne"
+     *
+     *              compute the binary permutations of bit length 2 (length of "ne"):
+     *              -> 00, 01, 10, 11
+     *              --> where the first bit is "n" and the second bit is "e"
+     *              ---> 00: ne, 01: ni, 10: re, 11: ri
+     *              ----> this is based on the "triggerChars->replacementChars" mapping
+     *
+     *              compute permutations of name, based on above explanation
+     *              -> Ådne, Ådni, Ådre, Ådri
+     *
+     *              find the best match of these permutated names using Levenshtein
+     *              (the letters do not have to be in order)
+     *
+     * @param name      the name to be computed
+     * @param nameList  the according name list
+     * @return          String after handling with "compareScore"
+     */
+    private String bestMatch(String name, Collection<String> nameList){
         Set<String> matches = new HashSet<>();
         List<String> permutationsOfName = this.generatePermutations(name);
-//        System.out.println("Best match for " + name + " in " + StringUtils.join(permutationsOfName));
-
         for (String n : permutationsOfName) {
-            // System.out.println(n);
             // Compute the top three for each possible match, giving a broader sample size.
             Set<String> topThree = new HashSet<>();
             FuzzySearch.extractTop(n, nameList, 3).forEach(
@@ -107,23 +155,25 @@ class FuzzyNameSearch {
             // Otherwise, continue adding the best matching names
             matches.add(bestOfThree);
         }
-        // Do some clever calculations to find the actual best match
         return this.compareScore(name, matches);
     }
 
-    // The essence of the program - computes the score for each word
-    // Returns the best matching word
+    /**
+     * Essence of the program - computes the score for each word
+     * Returns the best matching name
+     * @param orig          original name passed by program
+     * @param fuzzyWords    list of possible fuzzy matches
+     * @return String
+     */
     private String compareScore(String orig, Set<String> fuzzyWords){
-        // Look up cached words
         int bestScore = -999;
         String bestWord = "";
         for (String s : fuzzyWords){
             if (s.length() < 1) continue;
-            // add penalty
             int tmpScore = FuzzySearch.ratio(orig, s);
             // Add a penalty score of -15 for each letter the names differ in length
             tmpScore -= 15*(Math.abs(orig.length() - s.length()));
-//            System.out.println("Comparing " + orig + " to "+ s + ", Score = " + tmpScore);
+            // System.out.println("Comparing " + orig + " to "+ s + ", Score = " + tmpScore);
             // if tmpScore is 100, this name is definitely correct
             if (tmpScore == 100){
                 bestWord = s;
@@ -134,11 +184,22 @@ class FuzzyNameSearch {
                 bestWord = s;
             }
         }
-//        System.out.println(bestWord+" with " + bestScore + " was returned");
+        // System.out.println(bestWord+" with " + bestScore + " was returned");
         return bestWord;
     }
 
-    private String getNameScore(String name, boolean isFirst){
+    /**
+     * Return a name, stripping it of weird characters
+     * Based on the best scoring one after fuzzy-searching
+     *
+     * Before doing anything, check if the name is stored in cache,
+     *  if so, return it immediately.
+     *
+     * @param name      a name
+     * @param isFirst   Whether to check first name list or not
+     * @return String
+     */
+    private String parseName(String name, boolean isFirst){
         String possibleMatch = this.getFromCache(name);
         if (possibleMatch != null){
             return possibleMatch;
@@ -156,8 +217,7 @@ class FuzzyNameSearch {
             if (byLetter.size() > 2){
                 String b = bestMatch(name, byLetter);
                 matches.add(b);
-//                matches.add(bestMatch(name, byLetter));
-//                System.out.println("Validating letter score: " + FuzzySearch.ratio(name,b));
+                // System.out.println("Validating letter score: " + FuzzySearch.ratio(name,b));
                 this.foundLetterMatch = true;
             }
             Collection<String> byLength = isFirst?
@@ -167,13 +227,13 @@ class FuzzyNameSearch {
             if (byLength.size() > 2){
                 String b = bestMatch(name, byLength);
                 matches.add(b);
-//                System.out.println("Valdating length score: " + FuzzySearch.ratio(name,b));
+                //System.out.println("Valdating length score: " + FuzzySearch.ratio(name,b));
                 matches.add(bestMatch(name, byLength));
                 this.foundLengthMatch = true;
             }
         }
         catch(NullPointerException e){
-//            System.out.println("Did not find any list for " + name);
+            //System.out.println("Did not find any list for " + name);
         }
         /*
         Given that we have "Øygard" and "Nygård" as matches for Nygard
@@ -187,6 +247,10 @@ class FuzzyNameSearch {
         for (String m : matches){
             String slugTxt = slg.slugify(m);
             int tmp = FuzzySearch.ratio(name, slugTxt);
+            /*
+            The number 10 might need some tweaking.
+            It is simply the penalty for length differences.
+             */
             tmp -= 10*(Math.abs(name.length() - slugTxt.length()));
 //            System.out.println("Comparing " + name + " with the slug of "+m+": " + slugTxt + " scored " + tmp);
             if (tmp>bestSlugScore){
@@ -194,92 +258,67 @@ class FuzzyNameSearch {
                 bestSlug = m;
             }
         }
-
         return bestSlug;
     }
 
+    /**
+     * Returns a name based on a split name (e.g. Tor-Gunnar -> [tor, gunnar])
+     * Also applies fuzzy-search (e.g. Pqr-Kane -> [per, kåre])
+     * @param name              a name
+     * @param lookForFirstName  whether to look for a first name or surname.
+     * @return
+     */
     private List<String> handleSplitName(String name, boolean lookForFirstName){
         List<String> combinedName = new ArrayList<>();
         for (String part : StringUtils.split(name, '-')){
-            List<String> partly = altHandleName(part, lookForFirstName, 0, new ArrayList<>());
+            List<String> partly = handleName(part, lookForFirstName, 0, new ArrayList<>());
             combinedName.addAll(partly);
         }
         return combinedName;
     }
 
+    /**
+     * Returns a string, space separated at index
+     * @param name
+     * @param index
+     * @return String
+     */
     private String splitNameByIndex(String name, int index){
-//        System.out.println("Using index " + index);
         String new_part1 = StringUtils.substring(name, 0, index);
         String new_part2 = StringUtils.substring(name, index);
         return StringUtils.joinWith(" ", new_part1, new_part2);
     }
 
-    private List<String> altHandleName(String name, boolean firstRun,
-                                       int index, List<String> complete){
+
+    private List<String> handleName(String name, boolean firstRun,
+                                    int index, List<String> complete){
         name = name.trim().toLowerCase();
-//        System.out.println("First? " + firstRun);
         List<String> tmpName = new ArrayList<>();
         for (String n : StringUtils.split(name)){
-            String best = this.getNameScore(n, firstRun);
+            String best = this.parseName(n, firstRun);
             tmpName.add(best);
             if (n.length() < 13){
                 // valid first name
                 complete.add(best);
             }
-//            }
-//            System.out.println("Found letter list? " + this.foundLetterMatch);
-//            System.out.println("Found length list? " + this.foundLengthMatch);
             if (this.foundLetterMatch && !this.foundLengthMatch){
-                // The length of the presumed first name will be our starting index
-                // The name might not be correct, but it should be a decent indicator
-//                System.out.println("###############TEMPNAMES: " + tmpName.toString());
-//                System.out.println("Index: " + index);
+                /*
+                 * The length of the presumed first name will be our starting index
+                 * The name might not be correct, but it should be a decent indicator
+                 */
                 int startIdx = tmpName.get(index).length();
                 if (tmpName.size() > 1){
-                    // if this outer if-statement is true,
                     // there will NEVER be a _SINGLE_ valid name
-                    // only add the names if it contains more than one name.
-//                    tmpName.remove(lastAdded);
+                    // only add the names if it contains more than one.
                     complete.addAll(tmpName);
                 }
-//                System.out.println("Using '" + tmpName.get(tmpName.size()-1) + "' to guess the index");
+                // System.out.println("Using '" + tmpName.get(tmpName.size()-1) + "' to guess the index");
                 String new_name = splitNameByIndex(n, startIdx);
-//                tmpName.add(new_name);
-//                System.out.println("New name: " + new_name);
-//                System.out.println("Handling the entire name recursively!");
-//                System.out.println("PASSING ON THE INDEX --------> " + Integer.toString(tmpName.size()-1));
-                return altHandleName(new_name, firstRun, tmpName.size()-1, complete);
+                return handleName(new_name, firstRun, tmpName.size()-1, complete);
             }
             firstRun = false;
         }
         return complete.stream().distinct().collect(Collectors.toList());
-    }
-
-    private List<String> handleName(String name){
-        name = name.trim().toLowerCase();
-        String possibleMatch = getFromCache(name);
-        if (possibleMatch != null){
-            return Arrays.asList(StringUtils.split(possibleMatch));
-        }
-        String first;
-        // Keep the first name as the first element, then the rest of the names as the second.
-        String[] nameArr = StringUtils.split(name, " ", 2);
-            if (nameArr.length > 1) {
-                first = nameArr[0];
-            }
-            else first = name;
-//        System.out.println("First name: "+first);
-//        System.out.println("Middle/surname(s): "+sur);
-        List<String> allNames = new ArrayList<>();
-
-        if (first.contains("-")){
-            allNames.addAll(handleSplitName(name, true));
-        }
-        else{
-            String best = this.getNameScore(first, true);
-            allNames.add(best);
-        }
-        return allNames;
     }
 
     private String getFromCache(String n) {
@@ -290,26 +329,37 @@ class FuzzyNameSearch {
         return key;
     }
 
-    List<String> checkName(String n){
+    /**
+     * The function to be called to search a name
+     * E.g. "firstnamelastname" -> ["firstname", "lastname"]
+     * @param n     name
+     * @return      list of names, result of fuzzy matching
+     */
+    List<String> searchName(String n){
         n = n.trim().toLowerCase();
         String possibleMatch = getFromCache(n);
         if (possibleMatch != null){
             return Arrays.asList(StringUtils.split(possibleMatch));
         }
-
         List<String> result;
+        /*
+        * modify true or false based on what gives the best results generally
+        * this is based on whether a search for names starting with surnames is typical
+        * (which it's probably not, thus defaulting to true)
+         */
         if (n.contains("-")) {
-//            System.out.println("Handling a split name..");
-            result = this.handleName(n);
+            result = this.handleSplitName(n, true);
         }
+        /*
+         * A name containing only one name might be only a sur name
+         * attempt to solve for both a first name and then a sur name.
+         * return the best match.
+         * param firstRun: look for first name in the first match.
+         */
         else if (StringUtils.split(n).length == 1){
-            // A name containing only one name might be only a sur name
-            // attempt to solve for both a first name and then a sur name.
-            // return the best match.
-            // param firstRun: look for first name in the first match.
-            List<String> startFirst = this.altHandleName(n, true,
+            List<String> startFirst = this.handleName(n, true,
                    0, new ArrayList<>());
-            List<String> startSurname = this.altHandleName(n,
+            List<String> startSurname = this.handleName(n,
                     false, 0, new ArrayList<>());
             System.out.println("Found two names: " + startFirst.toString() + " and " +
             startSurname.toString());
@@ -319,9 +369,7 @@ class FuzzyNameSearch {
         }
         else{
             List<String> s = new ArrayList<>();
-//            return this.altHandleName(n,
-//                    true, 0, s);
-            result = this.altHandleName(n, true, 0, s);
+            result = this.handleName(n, true, 0, s);
         }
         System.out.println(n + " => " + result);
         String resultAsString = StringUtils.join(result, " ");
@@ -329,8 +377,11 @@ class FuzzyNameSearch {
         System.out.println("writing: " + result + " with key = "+n);
         return result;
     }
+
+    /**
+     * Store tempCachedWords in cache (to later be loaded as cachedWords)
+     */
     void close(){
-        // write all newly found words to cache
         this.cf.cacheNames(this.tempCachedWords);
     }
 }
