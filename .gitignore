@@ -1,1 +1,5 @@
-*.txt
+/src/out
+*.DS_Store
+*.iml
+*.cache
+*.py
